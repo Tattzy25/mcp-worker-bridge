@@ -2,8 +2,8 @@ import { createMcpHandler } from "agents/mcp/server";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-const SHOPIFY_USER_AGENT =
-  "ShoppingTools/1.0";
+const UCP_AGENT_PROFILE =
+  "https://ucp-agent-profile.facetimefy.com/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json";
 
 function createServer() {
 const server = new McpServer({
@@ -14,15 +14,8 @@ version: "1.0.0",
 server.registerTool(
 "search_catalog",
 {
-description: `Search for products in a merchant's storefront catalog after discovery. Use this tool when buyers are searching for products within a specific merchant's store. Input and response conform to the UCP catalog search capability (dev.ucp.shopping.catalog.search). Prices in the response are integers in the currency's ISO 4217 minor units, paired with a currency code: {"amount": 600, "currency": "USD"} is $6.00 and {"amount": 2500, "currency": "USD"} is $25.00. Convert to major units before quoting a price to a buyer (divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies such as JPY are already whole units).`,
-      inputSchema: z.object({
+description: `Search for products in the merchant storefront catalog for the domain passed in domain. Use this tool when buyers are searching for products in that specific store. Input and response conform to the UCP catalog search capability (dev.ucp.shopping.catalog.search). Prices in the response are integers in the currency's ISO 4217 minor units, paired with a currency code: {"amount": 600, "currency": "USD"} is $6.00 and {"amount": 2500, "currency": "USD"} is $25.00. Convert to major units before quoting a price to a buyer (divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies such as JPY are already whole units).`,      inputSchema: z.object({
   domain: z.string(),
-
-  meta: z.object({
-    "ucp-agent": z.object({
-      profile: z.string().url(),
-    }),
-  }),
 
   catalog: z.object({
     query: z.string(),
@@ -63,7 +56,7 @@ description: `Search for products in a merchant's storefront catalog after disco
   }).passthrough(),
       }),
 },
-async ({ domain, meta, catalog }) => {
+async ({ domain, catalog }) => {
   const SHOPIFY_MCP_URL = `https://${domain}/api/ucp/mcp`;
 
   const shopifyRequest = {
@@ -73,7 +66,11 @@ async ({ domain, meta, catalog }) => {
     params: {
       name: "search_catalog",
       arguments: {
-        meta,
+        meta: {
+          "ucp-agent": {
+            profile: UCP_AGENT_PROFILE,
+          },
+        },
         catalog,
       },
     },
@@ -84,7 +81,6 @@ async ({ domain, meta, catalog }) => {
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json, text/event-stream",
-      "User-Agent": SHOPIFY_USER_AGENT,
     },
     body: JSON.stringify(shopifyRequest),
   });
@@ -104,15 +100,8 @@ async ({ domain, meta, catalog }) => {
   server.registerTool(
 "get_product",
 {
-description: `Retrieve details about a specific product in a merchant's storefront catalog after discovery. Use this tool when buyers are interested in a particular product from a specific merchant store. Input and response conform to the UCP product details capability (dev.ucp.shopping.product.details). Prices in the response are integers in the currency's ISO 4217 minor units, paired with a currency code: {"amount": 600, "currency": "USD"} is $6.00 and {"amount": 2500, "currency": "USD"} is $25.00. Convert to major units before quoting a price to a buyer (divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies such as JPY are already whole units).`,
-      inputSchema: z.object({
+description: `Retrieve details about a specific product in the merchant storefront catalog for the domain passed in domain. Use this tool when buyers are interested in a particular product from that specific store. Input and response conform to the UCP product details capability (dev.ucp.shopping.product.details). Prices in the response are integers in the currency's ISO 4217 minor units, paired with a currency code: {"amount": 600, "currency": "USD"} is $6.00 and {"amount": 2500, "currency": "USD"} is $25.00. Convert to major units before quoting a price to a buyer (divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies such as JPY are already whole units).`,      inputSchema: z.object({
   domain: z.string(),
-
-  meta: z.object({
-    "ucp-agent": z.object({
-      profile: z.string().url(),
-    }),
-  }),
 
   catalog: z.object({
     id: z.string(),
@@ -148,7 +137,7 @@ description: `Retrieve details about a specific product in a merchant's storefro
   }).passthrough(),
       }),
 },
-async ({ domain, meta, catalog }) => {
+async ({ domain, catalog }) => {
   const SHOPIFY_MCP_URL = `https://${domain}/api/ucp/mcp`;
 
   const shopifyRequest = {
@@ -158,7 +147,11 @@ async ({ domain, meta, catalog }) => {
     params: {
       name: "get_product",
       arguments: {
-        meta,
+        meta: {
+          "ucp-agent": {
+            profile: UCP_AGENT_PROFILE,
+          },
+        },
         catalog,
       },
     },
@@ -169,7 +162,6 @@ async ({ domain, meta, catalog }) => {
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json, text/event-stream",
-      "User-Agent": SHOPIFY_USER_AGENT,
     },
     body: JSON.stringify(shopifyRequest),
   });
@@ -189,15 +181,8 @@ async ({ domain, meta, catalog }) => {
   server.registerTool(
 "lookup_catalog",
 {
-description: `Look up multiple products or variants by identifier from a merchant's storefront catalog after discovery. Use this tool to resolve multiple product/variant IDs in a single request for a specific merchant store. Supports: - Product IDs (gid://shopify/p/{id}) - Variant IDs (gid://shopify/ProductVariant/{id}) Input and response conform to the UCP catalog lookup capability (dev.ucp.shopping.catalog.lookup). Prices in the response are integers in the currency's ISO 4217 minor units, paired with a currency code: {"amount": 600, "currency": "USD"} is $6.00 and {"amount": 2500, "currency": "USD"} is $25.00. Convert to major units before quoting a price to a buyer (divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies such as JPY are already whole units).`,
-      inputSchema: z.object({
+description: `Look up multiple products or variants by identifier in the merchant storefront catalog for the domain passed in domain. Use this tool to resolve multiple product/variant IDs in a single request for that specific store. Supports: - Product IDs (gid://shopify/p/{id}): Returns product with one featured variant - Variant IDs (gid://shopify/ProductVariant/{id}): Returns parent product with the exact variant Results are grouped by product. Each variant includes an input array showing which request ID resolved to it and whether the match was exact or featured. Examples: - Resolving a list of product IDs from search results - Validating multiple cart items in one call - Looking up products from deep links or saved lists Input and response conform to the UCP catalog lookup capability (dev.ucp.shopping.catalog.lookup). Prices in the response are integers in the currency's ISO 4217 minor units, paired with a currency code: {"amount": 600, "currency": "USD"} is $6.00 and {"amount": 2500, "currency": "USD"} is $25.00. Convert to major units before quoting a price to a buyer (divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies such as JPY are already whole units).`,      inputSchema: z.object({
   domain: z.string(),
-
-  meta: z.object({
-    "ucp-agent": z.object({
-      profile: z.string().url(),
-    }),
-  }),
 
   catalog: z.object({
     ids: z.array(z.string()).min(1).max(10),
@@ -224,7 +209,7 @@ description: `Look up multiple products or variants by identifier from a merchan
   }).passthrough(),
       }),
 },
-async ({ domain, meta, catalog }) => {
+async ({ domain, catalog }) => {
   const SHOPIFY_MCP_URL = `https://${domain}/api/ucp/mcp`;
 
   const shopifyRequest = {
@@ -234,7 +219,11 @@ async ({ domain, meta, catalog }) => {
     params: {
       name: "lookup_catalog",
       arguments: {
-        meta,
+        meta: {
+          "ucp-agent": {
+            profile: UCP_AGENT_PROFILE,
+          },
+        },
         catalog,
       },
     },
@@ -245,7 +234,6 @@ async ({ domain, meta, catalog }) => {
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json, text/event-stream",
-      "User-Agent": SHOPIFY_USER_AGENT,
     },
     body: JSON.stringify(shopifyRequest),
   });
