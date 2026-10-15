@@ -5,6 +5,116 @@ import { z } from "zod";
 const UCP_AGENT_PROFILE =
   "https://ucp-agent-profile.facetimefy.com/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json";
 
+type McpToolReply = {
+  error?: unknown;
+  result?: {
+    content?: Array<{ type?: string; text?: string }>;
+    structuredContent?: unknown;
+    isError?: boolean;
+  };
+};
+
+function parseTextContent(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function unwrapToolReply(reply: McpToolReply): unknown {
+  if (reply.error !== undefined) return { error: reply.error };
+  if (reply.result?.structuredContent !== undefined) return reply.result.structuredContent;
+
+  const text = reply.result?.content?.find(
+    (item) => item.type === "text" && typeof item.text === "string"
+  )?.text;
+
+  return text ? parseTextContent(text) : reply;
+}
+
+function compactCatalogValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const seen = new Set<string>();
+    const compacted: unknown[] = [];
+
+    for (const item of value) {
+      const compactedItem = compactCatalogValue(item);
+      const identity =
+        compactedItem &&
+        typeof compactedItem === "object" &&
+        typeof (compactedItem as { id?: unknown }).id === "string"
+          ? (compactedItem as { id: string }).id
+          : JSON.stringify(compactedItem);
+
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      compacted.push(compactedItem);
+    }
+
+    return compacted;
+  }
+
+  if (!value || typeof value !== "object") return value;
+
+  const source = value as Record<string, unknown>;
+  const compacted: Record<string, unknown> = {};
+
+  for (const [key, entry] of Object.entries(source)) {
+    if (entry === undefined || entry === null) continue;
+    compacted[key] = compactCatalogValue(entry);
+  }
+
+  return compacted;
+}
+
+function createToolResult(reply: McpToolReply) {
+  if (reply.error !== undefined) {
+    return {
+      content: [{ text: JSON.stringify(reply.error), type: "text" as const }],
+      structuredContent: { error: reply.error },
+      isError: true,
+    };
+  }
+
+  const compacted = compactCatalogValue(unwrapToolReply(reply));
+
+  return {
+    content: [{ text: JSON.stringify(compacted), type: "text" as const }],
+    structuredContent: compacted,
+    ...(reply.result?.isError !== undefined ? { isError: reply.result.isError } : {}),
+  };
+}
+
+async function callShopifyCatalogTool(domain: string, name: string, catalog: unknown) {
+  const response = await fetch(`https://${domain}/api/ucp/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: crypto.randomUUID(),
+      method: "tools/call",
+      params: {
+        name,
+        arguments: {
+          meta: {
+            "ucp-agent": {
+              profile: UCP_AGENT_PROFILE,
+            },
+          },
+          catalog,
+        },
+      },
+    }),
+  });
+
+  const reply = (await response.json()) as McpToolReply;
+  return createToolResult(reply);
+}
+
 function createServer() {
   const server = new McpServer({
     name: "MCP-Agents",
@@ -89,44 +199,7 @@ function createServer() {
       }),
     },
     async ({ domain, catalog }) => {
-      const SHOPIFY_MCP_URL = `https://${domain}/api/ucp/mcp`;
-
-      const shopifyRequest = {
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "tools/call",
-        params: {
-          name: "search_catalog",
-          arguments: {
-            meta: {
-              "ucp-agent": {
-                profile: UCP_AGENT_PROFILE,
-              },
-            },
-            catalog,
-          },
-        },
-      };
-
-      const shopifyResponse = await fetch(SHOPIFY_MCP_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream",
-        },
-        body: JSON.stringify(shopifyRequest),
-      });
-
-      const shopifyReply = await shopifyResponse.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(shopifyReply),
-          },
-        ],
-      };
+      return callShopifyCatalogTool(domain, "search_catalog", catalog);
     }
   );
 
@@ -211,44 +284,7 @@ function createServer() {
       }),
     },
     async ({ domain, catalog }) => {
-      const SHOPIFY_MCP_URL = `https://${domain}/api/ucp/mcp`;
-
-      const shopifyRequest = {
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "tools/call",
-        params: {
-          name: "get_product",
-          arguments: {
-            meta: {
-              "ucp-agent": {
-                profile: UCP_AGENT_PROFILE,
-              },
-            },
-            catalog,
-          },
-        },
-      };
-
-      const shopifyResponse = await fetch(SHOPIFY_MCP_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream",
-        },
-        body: JSON.stringify(shopifyRequest),
-      });
-
-      const shopifyReply = await shopifyResponse.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(shopifyReply),
-          },
-        ],
-      };
+      return callShopifyCatalogTool(domain, "get_product", catalog);
     }
   );
 
@@ -322,44 +358,7 @@ function createServer() {
       }),
     },
     async ({ domain, catalog }) => {
-      const SHOPIFY_MCP_URL = `https://${domain}/api/ucp/mcp`;
-
-      const shopifyRequest = {
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "tools/call",
-        params: {
-          name: "lookup_catalog",
-          arguments: {
-            meta: {
-              "ucp-agent": {
-                profile: UCP_AGENT_PROFILE,
-              },
-            },
-            catalog,
-          },
-        },
-      };
-
-      const shopifyResponse = await fetch(SHOPIFY_MCP_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream",
-        },
-        body: JSON.stringify(shopifyRequest),
-      });
-
-      const shopifyReply = await shopifyResponse.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(shopifyReply),
-          },
-        ],
-      };
+      return callShopifyCatalogTool(domain, "lookup_catalog", catalog);
     }
   );
 
